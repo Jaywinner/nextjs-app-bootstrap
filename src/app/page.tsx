@@ -14,27 +14,83 @@ import {
 
 type ProcessingStatus = "idle" | "uploading" | "processing" | "success" | "error";
 
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB in bytes
+
 export default function Home() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<ProcessingStatus>("idle");
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const readFileAsDataURL = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const validateAndSetFile = async (file: File) => {
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      setError("Please select an image file");
+      return;
+    }
+
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE) {
+      setError(`File size must be less than ${MAX_FILE_SIZE / (1024 * 1024)}MB`);
+      return;
+    }
+
+    setSelectedFile(file);
+    setStatus("idle");
+    setError(null);
+    setResult(null);
+
+    try {
+      const dataUrl = await readFileAsDataURL(file);
+      setPreviewUrl(dataUrl);
+    } catch {
+      setError("Failed to read file");
+    }
+  };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      setSelectedFile(file);
-      setStatus("idle");
-      setError(null);
-      setResult(null);
+      validateAndSetFile(file);
+    }
+  };
 
-      // Create preview URL
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreviewUrl(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      validateAndSetFile(file);
     }
   };
 
@@ -46,46 +102,30 @@ export default function Home() {
     setResult(null);
 
     try {
-      // Convert file to base64
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64Data = reader.result as string;
+      const base64Data = await readFileAsDataURL(selectedFile);
 
-        try {
-          setStatus("processing");
+      setStatus("processing");
 
-          // Call our API route
-          const response = await fetch("/api/process-image", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              image: base64Data,
-              filename: selectedFile.name,
-            }),
-          });
+      // Call our API route
+      const response = await fetch("/api/process-image", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          image: base64Data,
+          filename: selectedFile.name,
+        }),
+      });
 
-          const data = await response.json();
+      const data = await response.json();
 
-          if (!response.ok) {
-            throw new Error(data.error || "Failed to process image");
-          }
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to process image");
+      }
 
-          setStatus("success");
-          setResult(JSON.stringify(data, null, 2));
-        } catch (err) {
-          setStatus("error");
-          setError(err instanceof Error ? err.message : "An error occurred");
-        }
-      };
-
-      reader.onerror = () => {
-        setStatus("error");
-        setError("Failed to read file");
-      };
-
-      reader.readAsDataURL(selectedFile);
+      setStatus("success");
+      setResult(JSON.stringify(data, null, 2));
     } catch (err) {
       setStatus("error");
       setError(err instanceof Error ? err.message : "An error occurred");
@@ -121,7 +161,17 @@ export default function Home() {
           </CardHeader>
           <CardContent className="space-y-6">
             {/* File Input */}
-            <div className="flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-12 hover:border-primary/50 transition-colors">
+            <div 
+              className={`flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-12 transition-colors ${
+                isDragging 
+                  ? "border-primary bg-primary/5" 
+                  : "hover:border-primary/50"
+              }`}
+              onDragEnter={handleDragEnter}
+              onDragLeave={handleDragLeave}
+              onDragOver={handleDragOver}
+              onDrop={handleDrop}
+            >
               <Upload className="size-12 text-muted-foreground mb-4" />
               <label
                 htmlFor="file-input"

@@ -29,10 +29,9 @@ export async function POST(request: NextRequest) {
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Google Script error:", errorText);
+      console.error("Google Script error:", response.status, response.statusText);
       return NextResponse.json(
-        { error: "Failed to process image with the model", details: errorText },
+        { error: "Failed to process image with the model" },
         { status: 500 }
       );
     }
@@ -49,7 +48,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error: "An error occurred while processing the image",
-        details: error instanceof Error ? error.message : "Unknown error",
       },
       { status: 500 }
     );
